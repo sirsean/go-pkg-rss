@@ -59,7 +59,7 @@ type Feed struct {
 	Url string
 
 	// Database containing a list of known Items and Channels for this instance
-	database *database
+	database Database
 
 	// A notification function, used to notify the host when a new channel
 	// has been found.
@@ -74,15 +74,19 @@ type Feed struct {
 	lastupdate int64
 }
 
-func New(cachetimeout int, enforcecachelimit bool, ch ChannelHandler, ih ItemHandler) *Feed {
+func NewWithDatabase(database Database, cachetimeout int, enforcecachelimit bool, ch ChannelHandler, ih ItemHandler) *Feed {
 	v := new(Feed)
 	v.CacheTimeout = cachetimeout
 	v.EnforceCacheLimit = enforcecachelimit
 	v.Type = "none"
-	v.database = NewDatabase()
+	v.database = database
 	v.chanhandler = ch
 	v.itemhandler = ih
 	return v
+}
+
+func New(cachetimeout int, enforcecachelimit bool, ch ChannelHandler, ih ItemHandler) *Feed {
+    return NewWithDatabase(NewDatabase(), cachetimeout, enforcecachelimit, ch, ih)
 }
 
 // This returns a timestamp of the last time the feed was updated.
@@ -171,13 +175,13 @@ func (this *Feed) makeFeed(doc *xmlx.Document) (err error) {
 func (this *Feed) notifyListeners() {
 	var newchannels []*Channel
 	for _, channel := range this.Channels {
-		if this.database.request <- channel.Key(); !<-this.database.response {
+		if this.database.Request() <- channel.Key(); !<-this.database.Response() {
 			newchannels = append(newchannels, channel)
 		}
 
 		var newitems []*Item
 		for _, item := range channel.Items {
-			if this.database.request <- item.Key(); !<-this.database.response {
+			if this.database.Request() <- item.Key(); !<-this.database.Response() {
 				newitems = append(newitems, item)
 			}
 		}
