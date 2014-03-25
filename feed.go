@@ -86,7 +86,7 @@ func NewWithDatabase(database Database, cachetimeout int, enforcecachelimit bool
 }
 
 func New(cachetimeout int, enforcecachelimit bool, ch ChannelHandler, ih ItemHandler) *Feed {
-    return NewWithDatabase(NewDatabase(), cachetimeout, enforcecachelimit, ch, ih)
+	return NewWithDatabase(NewDatabase(), cachetimeout, enforcecachelimit, ch, ih)
 }
 
 // This returns a timestamp of the last time the feed was updated.
@@ -175,13 +175,13 @@ func (this *Feed) makeFeed(doc *xmlx.Document) (err error) {
 func (this *Feed) notifyListeners() {
 	var newchannels []*Channel
 	for _, channel := range this.Channels {
-        if !this.database.HasChannel(channel.Key()) {
+		if !this.database.HasChannel(channel.Key()) {
 			newchannels = append(newchannels, channel)
 		}
 
 		var newitems []*Item
 		for _, item := range channel.Items {
-            if !this.database.HasItem(item.Key()) {
+			if !this.database.HasItem(item.Key()) {
 				newitems = append(newitems, item)
 			}
 		}
