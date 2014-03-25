@@ -1,8 +1,8 @@
 package feeder
 
 import (
-	"crypto/md5"
-	"io"
+	"crypto/sha1"
+	"fmt"
 )
 
 type Item struct {
@@ -28,6 +28,10 @@ type Item struct {
 }
 
 func (i *Item) Key() string {
+	return i.hash(i.keyString())
+}
+
+func (i *Item) keyString() string {
 	switch {
 	case i.Guid != nil && len(*i.Guid) != 0:
 		return *i.Guid
@@ -36,8 +40,12 @@ func (i *Item) Key() string {
 	case len(i.Title) > 0 && len(i.PubDate) > 0:
 		return i.Title + i.PubDate
 	default:
-		h := md5.New()
-		io.WriteString(h, i.Description)
-		return string(h.Sum(nil))
+		return i.Description
 	}
+}
+
+func (i *Item) hash(keyString string) string {
+	h := sha1.New()
+	h.Write([]byte(keyString))
+	return fmt.Sprintf("%x", h.Sum(nil))
 }
