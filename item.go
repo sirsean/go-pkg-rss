@@ -3,6 +3,7 @@ package feeder
 import (
 	"crypto/sha1"
 	"fmt"
+	"time"
 )
 
 type Item struct {
@@ -25,6 +26,10 @@ type Item struct {
 	Content      *Content
 
 	Extensions map[string]map[string][]Extension
+}
+
+func (i *Item) ParsedPubDate() (time.Time, error) {
+	return parseTime(i.PubDate)
 }
 
 func (i *Item) Key() string {
