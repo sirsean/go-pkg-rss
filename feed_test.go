@@ -10,7 +10,7 @@ var items []*Item
 
 var channelChan chan Channel
 var itemChan chan Item
-var finishChan chan int64
+var finishChan chan error
 
 func TestFeed(t *testing.T) {
     fmt.Println("TestFeed")
@@ -200,8 +200,8 @@ func waitForResults() {
                 fmt.Println("got a channel", channel)
             case item := <-itemChan:
                 fmt.Println("got an item", item)
-            case seconds := <-finishChan:
-                fmt.Println("finished", seconds)
+            case err := <-finishChan:
+                fmt.Println("finished", err)
                 return
         }
     }
@@ -210,5 +210,5 @@ func waitForResults() {
 func initializeChannels() {
     channelChan = make(chan Channel)
     itemChan = make(chan Item)
-    finishChan = make(chan int64)
+    finishChan = make(chan error)
 }
