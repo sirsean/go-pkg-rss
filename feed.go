@@ -35,9 +35,6 @@ import (
 	"time"
 )
 
-type ChannelHandler func(f *Feed, newchannels []*Channel)
-type ItemHandler func(f *Feed, ch *Channel, newitems []*Item)
-
 type Feed struct {
 	// Custom cache timeout in minutes.
 	CacheTimeout int
@@ -61,32 +58,35 @@ type Feed struct {
 	// Database containing a list of known Items and Channels for this instance
 	database Database
 
-	// A notification function, used to notify the host when a new channel
-	// has been found.
-	chanhandler ChannelHandler
+    // A channel that will receive new Channels
+    channelChan chan Channel
 
-	// A notification function, used to notify the host when a new item
-	// has been found for a given channel.
-	itemhandler ItemHandler
+    // A channel that will receive new Items
+    itemChan chan Item
+
+    // A channel that will be notified each time we're done (with the number
+    // of seconds until the next update)
+    finishChan chan int64
 
 	// Last time content was fetched. Used in conjunction with CacheTimeout
 	// to ensure we don't get content too often.
 	lastupdate int64
 }
 
-func NewWithDatabase(database Database, cachetimeout int, enforcecachelimit bool, ch ChannelHandler, ih ItemHandler) *Feed {
+func NewWithDatabase(database Database, cachetimeout int, enforcecachelimit bool, channelChan chan Channel, itemChan chan Item, finishChan chan int64) *Feed {
 	v := new(Feed)
 	v.CacheTimeout = cachetimeout
 	v.EnforceCacheLimit = enforcecachelimit
 	v.Type = "none"
 	v.database = database
-	v.chanhandler = ch
-	v.itemhandler = ih
+    v.channelChan = channelChan
+    v.itemChan = itemChan
+    v.finishChan = finishChan
 	return v
 }
 
-func New(cachetimeout int, enforcecachelimit bool, ch ChannelHandler, ih ItemHandler) *Feed {
-	return NewWithDatabase(NewDatabase(), cachetimeout, enforcecachelimit, ch, ih)
+func New(cachetimeout int, enforcecachelimit bool, channelChan chan Channel, itemChan chan Item, finishChan chan int64) *Feed {
+	return NewWithDatabase(NewDatabase(), cachetimeout, enforcecachelimit, channelChan, itemChan, finishChan)
 }
 
 // This returns a timestamp of the last time the feed was updated.
@@ -173,26 +173,18 @@ func (this *Feed) makeFeed(doc *xmlx.Document) (err error) {
 }
 
 func (this *Feed) notifyListeners() {
-	var newchannels []*Channel
-	for _, channel := range this.Channels {
-		if !this.database.HasChannel(channel.Key()) {
-			newchannels = append(newchannels, channel)
-		}
+    for _, channel := range this.Channels {
+        if !this.database.HasChannel(channel.Key()) {
+            this.channelChan <- *channel
+        }
 
-		var newitems []*Item
-		for _, item := range channel.Items {
-			if !this.database.HasItem(item.Key()) {
-				newitems = append(newitems, item)
-			}
-		}
-		if len(newitems) > 0 && this.itemhandler != nil {
-			this.itemhandler(this, channel, newitems)
-		}
-	}
-
-	if len(newchannels) > 0 && this.chanhandler != nil {
-		this.chanhandler(this, newchannels)
-	}
+        for _, item := range channel.Items {
+            if !this.database.HasItem(item.Key()) {
+                this.itemChan <- *item
+            }
+        }
+    }
+    this.finishChan <- this.SecondsTillUpdate()
 }
 
 // This function returns true or false, depending on whether the CacheTimeout

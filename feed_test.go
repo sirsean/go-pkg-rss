@@ -3,11 +3,20 @@ package feeder
 import (
 	"io/ioutil"
 	"testing"
+    "fmt"
 )
 
 var items []*Item
 
+var channelChan chan Channel
+var itemChan chan Item
+var finishChan chan int64
+
 func TestFeed(t *testing.T) {
+    fmt.Println("TestFeed")
+    initializeChannels()
+    fmt.Println("channels initialized")
+
 	urilist := []string{
 		//"http://cyber.law.harvard.edu/rss/examples/sampleRss091.xml", // Non-utf8 encoding.
 		"http://store.steampowered.com/feeds/news.xml", // This feed violates the rss spec.
@@ -17,21 +26,30 @@ func TestFeed(t *testing.T) {
 	}
 
 	var feed *Feed
-	var err error
+	//var err error
 
 	for _, uri := range urilist {
-		feed = New(5, true, chanHandler, itemHandler)
+        fmt.Println("fetching ", uri)
+		feed = New(5, true, channelChan, itemChan, finishChan)
+        fmt.Println("built feed")
 
-		if err = feed.Fetch(uri, nil); err != nil {
-			t.Errorf("%s >>> %s", uri, err)
-			return
-		}
+        go feed.Fetch(uri, nil)
+        waitForResults()
+
+		//if err = feed.Fetch(uri, nil); err != nil {
+		//	t.Errorf("%s >>> %s", uri, err)
+		//	return
+		//}
+        //fmt.Println("fetched")
 	}
+    fmt.Println("TestFeed: Done")
 }
 
 func Test_NewItem(t *testing.T) {
+    initializeChannels()
+
 	content, _ := ioutil.ReadFile("testdata/initial.atom")
-	feed := New(1, true, chanHandler, itemHandler)
+	feed := New(1, true, channelChan, itemChan, finishChan)
 	err := feed.FetchBytes("http://example.com", content, nil)
 	if err != nil {
 		t.Error(err)
@@ -50,11 +68,13 @@ func Test_NewItem(t *testing.T) {
 }
 
 func Test_AtomAuthor(t *testing.T) {
+    initializeChannels()
+
 	content, err := ioutil.ReadFile("testdata/idownload.atom")
 	if err != nil {
 		t.Errorf("unable to load file")
 	}
-	feed := New(1, true, chanHandler, itemHandler)
+	feed := New(1, true, channelChan, itemChan, finishChan)
 	err = feed.FetchBytes("http://example.com", content, nil)
 
 	item := feed.Channels[0].Items[0]
@@ -65,8 +85,10 @@ func Test_AtomAuthor(t *testing.T) {
 }
 
 func Test_RssAuthor(t *testing.T) {
+    initializeChannels()
+
 	content, _ := ioutil.ReadFile("testdata/boing.rss")
-	feed := New(1, true, chanHandler, itemHandler)
+	feed := New(1, true, channelChan, itemChan, finishChan)
 	feed.FetchBytes("http://example.com", content, nil)
 
 	item := feed.Channels[0].Items[0]
@@ -77,8 +99,10 @@ func Test_RssAuthor(t *testing.T) {
 }
 
 func Test_ItemExtensions(t *testing.T) {
+    initializeChannels()
+
 	content, _ := ioutil.ReadFile("testdata/extension.rss")
-	feed := New(1, true, chanHandler, itemHandler)
+	feed := New(1, true, channelChan, itemChan, finishChan)
 	feed.FetchBytes("http://example.com", content, nil)
 
 	edgarExtensionxbrlFiling := feed.Channels[0].Items[0].Extensions["http://www.sec.gov/Archives/edgar"]["xbrlFiling"][0].Childrens
@@ -102,8 +126,10 @@ func Test_ItemExtensions(t *testing.T) {
 }
 
 func Test_ChannelExtensions(t *testing.T) {
+    initializeChannels()
+
 	content, _ := ioutil.ReadFile("testdata/extension.rss")
-	feed := New(1, true, chanHandler, itemHandler)
+	feed := New(1, true, channelChan, itemChan, finishChan)
 	feed.FetchBytes("http://example.com", content, nil)
 
 	channel := feed.Channels[0]
@@ -132,8 +158,10 @@ func Test_ChannelExtensions(t *testing.T) {
 }
 
 func Test_CData(t *testing.T) {
+    initializeChannels()
+
 	content, _ := ioutil.ReadFile("testdata/iosBoardGameGeek.rss")
-	feed := New(1, true, chanHandler, itemHandler)
+	feed := New(1, true, channelChan, itemChan, finishChan)
 	feed.FetchBytes("http://example.com", content, nil)
 
 	item := feed.Channels[0].Items[0]
@@ -144,8 +172,10 @@ func Test_CData(t *testing.T) {
 }
 
 func Test_Link(t *testing.T) {
+    initializeChannels()
+
 	content, _ := ioutil.ReadFile("testdata/nytimes.rss")
-	feed := New(1, true, chanHandler, itemHandler)
+	feed := New(1, true, channelChan, itemChan, finishChan)
 	feed.FetchBytes("http://example.com", content, nil)
 
 	channel := feed.Channels[0]
@@ -163,11 +193,22 @@ func Test_Link(t *testing.T) {
 	}
 }
 
-func chanHandler(feed *Feed, newchannels []*Channel) {
-	println(len(newchannels), "new channel(s) in", feed.Url)
+func waitForResults() {
+    for {
+        select {
+            case channel := <-channelChan:
+                fmt.Println("got a channel", channel)
+            case item := <-itemChan:
+                fmt.Println("got an item", item)
+            case seconds := <-finishChan:
+                fmt.Println("finished", seconds)
+                return
+        }
+    }
 }
 
-func itemHandler(feed *Feed, ch *Channel, newitems []*Item) {
-	items = newitems
-	println(len(newitems), "new item(s) in", ch.Title, "of", feed.Url)
+func initializeChannels() {
+    channelChan = make(chan Channel)
+    itemChan = make(chan Item)
+    finishChan = make(chan int64)
 }
