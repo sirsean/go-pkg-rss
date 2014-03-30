@@ -64,16 +64,16 @@ type Feed struct {
     // A channel that will receive new Items
     itemChan chan Item
 
-    // A channel that will be notified each time we're done (with the number
-    // of seconds until the next update)
-    finishChan chan int64
+    // A channel that will be notified each time we're done (if it failed, then
+    // we'll send an error, if it finished successfully it will be nil)
+    finishChan chan error
 
 	// Last time content was fetched. Used in conjunction with CacheTimeout
 	// to ensure we don't get content too often.
 	lastupdate int64
 }
 
-func NewWithDatabase(database Database, cachetimeout int, enforcecachelimit bool, channelChan chan Channel, itemChan chan Item, finishChan chan int64) *Feed {
+func NewWithDatabase(database Database, cachetimeout int, enforcecachelimit bool, channelChan chan Channel, itemChan chan Item, finishChan chan error) *Feed {
 	v := new(Feed)
 	v.CacheTimeout = cachetimeout
 	v.EnforceCacheLimit = enforcecachelimit
@@ -85,13 +85,22 @@ func NewWithDatabase(database Database, cachetimeout int, enforcecachelimit bool
 	return v
 }
 
-func New(cachetimeout int, enforcecachelimit bool, channelChan chan Channel, itemChan chan Item, finishChan chan int64) *Feed {
+func New(cachetimeout int, enforcecachelimit bool, channelChan chan Channel, itemChan chan Item, finishChan chan error) *Feed {
 	return NewWithDatabase(NewDatabase(), cachetimeout, enforcecachelimit, channelChan, itemChan, finishChan)
 }
 
 // This returns a timestamp of the last time the feed was updated.
 // The value is in seconds.
 func (this *Feed) LastUpdate() int64 { return this.lastupdate }
+
+// If we're returning an error, we also want to publish it to the finishChan, so
+// the caller knows about it (in case we're calling from inside a goroutine).
+func (this *Feed) sendError(err error) (error) {
+    if err != nil {
+        this.finishChan <- err
+    }
+    return err
+}
 
 // Fetch retrieves the feed's latest content if necessary.
 //
@@ -102,7 +111,7 @@ func (this *Feed) LastUpdate() int64 { return this.lastupdate }
 //
 // This is equivalent to calling FetchClient with http.DefaultClient
 func (this *Feed) Fetch(uri string, charset xmlx.CharsetFunc) (err error) {
-	return this.FetchClient(uri, http.DefaultClient, charset)
+	return this.sendError(this.FetchClient(uri, http.DefaultClient, charset))
 }
 
 // Fetch retrieves the feed's latest content if necessary.
@@ -184,7 +193,7 @@ func (this *Feed) notifyListeners() {
             }
         }
     }
-    this.finishChan <- this.SecondsTillUpdate()
+    this.finishChan <- nil
 }
 
 // This function returns true or false, depending on whether the CacheTimeout
